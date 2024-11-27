@@ -857,19 +857,13 @@ void lcd_commands()
                 lay1cal_meander(layer_height, extrusion_width);
                 break;
             case 6:
-                lay1cal_square(0, layer_height, extrusion_width);
-                break;
             case 5:
-                lay1cal_square(4, layer_height, extrusion_width);
-                break;
             case 4:
-                lay1cal_square(8, layer_height, extrusion_width);
-                break;
             case 3:
-                lay1cal_square(12, layer_height, extrusion_width);
+                lay1cal_square(layer_height, extrusion_width);
                 break;
             case 2:
-                lay1cal_finish(MMU2::mmu2.Enabled());
+                lay1cal_finish();
                 break;
             case 1:
                 lcd_setstatuspgm(MSG_WELCOME);
