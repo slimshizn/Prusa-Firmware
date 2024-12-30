@@ -4,9 +4,11 @@
 
 #include "Filament_sensor.h"
 #include "Timer.h"
-#include "cardreader.h"
 #include "eeprom.h"
+#include "language.h"
 #include "menu.h"
+#include "messages.h"
+#include "mmu2.h"
 #include "planner.h"
 #include "temperature.h"
 #include "ultralcd.h"
@@ -40,7 +42,7 @@ FSensorBlockRunout::~FSensorBlockRunout() { }
 #endif // FILAMENT_SENSOR
 
 void Filament_sensor::setEnabled(bool enabled) {
-    eeprom_update_byte((uint8_t *)EEPROM_FSENSOR, enabled);
+    eeprom_update_byte_notify((uint8_t *)EEPROM_FSENSOR, enabled);
     if (enabled) {
         fsensor.init();
     } else {
@@ -51,21 +53,21 @@ void Filament_sensor::setEnabled(bool enabled) {
 void Filament_sensor::setAutoLoadEnabled(bool state, bool updateEEPROM) {
     autoLoadEnabled = state;
     if (updateEEPROM) {
-        eeprom_update_byte((uint8_t *)EEPROM_FSENS_AUTOLOAD_ENABLED, state);
+        eeprom_update_byte_notify((uint8_t *)EEPROM_FSENS_AUTOLOAD_ENABLED, state);
     }
 }
 
 void Filament_sensor::setRunoutEnabled(bool state, bool updateEEPROM) {
     runoutEnabled = state;
     if (updateEEPROM) {
-        eeprom_update_byte((uint8_t *)EEPROM_FSENS_RUNOUT_ENABLED, state);
+        eeprom_update_byte_notify((uint8_t *)EEPROM_FSENS_RUNOUT_ENABLED, state);
     }
 }
 
 void Filament_sensor::setActionOnError(SensorActionOnError state, bool updateEEPROM) {
     sensorActionOnError = state;
     if (updateEEPROM) {
-        eeprom_update_byte((uint8_t *)EEPROM_FSENSOR_ACTION_NA, (uint8_t)state);
+        eeprom_update_byte_notify((uint8_t *)EEPROM_FSENSOR_ACTION_NA, (uint8_t)state);
     }
 }
 
@@ -110,29 +112,29 @@ bool Filament_sensor::checkFilamentEvents() {
 void Filament_sensor::triggerFilamentInserted() {
     if (autoLoadEnabled
         && (eFilamentAction == FilamentAction::None)
-        && (! MMU2::mmu2.Enabled() ) // quick and dirty hack to prevent spurious runouts while the MMU is in charge
         && !(
-            moves_planned() != 0
-            || IS_SD_PRINTING
-            || usb_timer.running()
+            MMU2::mmu2.Enabled() // quick and dirty hack to prevent spurious runouts while the MMU is in charge
+            || moves_planned() != 0
+            || printJobOngoing()
             || (lcd_commands_type == LcdCommands::Layer1Cal)
             || eeprom_read_byte((uint8_t *)EEPROM_WIZARD_ACTIVE)
             )
         ) {
-        filAutoLoad();
+        menu_submenu(lcd_AutoLoadFilament, true);
     }
 }
 
 void Filament_sensor::triggerFilamentRemoved() {
 //    SERIAL_ECHOLNPGM("triggerFilamentRemoved");
     if (runoutEnabled
-        && (! MMU2::mmu2.Enabled() ) // quick and dirty hack to prevent spurious runouts just before the toolchange
         && (eFilamentAction == FilamentAction::None)
-        && !saved_printing
         && (
             moves_planned() != 0
-            || IS_SD_PRINTING
-            || usb_timer.running()
+            || printJobOngoing()
+        )
+        && !(
+            saved_printing
+            || MMU2::mmu2.Enabled() // quick and dirty hack to prevent spurious runouts just before the toolchange
             || (lcd_commands_type == LcdCommands::Layer1Cal)
             || eeprom_read_byte((uint8_t *)EEPROM_WIZARD_ACTIVE)
         )
@@ -144,26 +146,17 @@ void Filament_sensor::triggerFilamentRemoved() {
     }
 }
 
-void Filament_sensor::filAutoLoad() {
-    eFilamentAction = FilamentAction::AutoLoad;
-    if (target_temperature[0] >= EXTRUDE_MINTEMP) {
-        bFilamentPreheatState = true;
-        menu_submenu(mFilamentItemForce);
-    } else {
-        menu_submenu(lcd_generic_preheat_menu);
-        lcd_timeoutToStatus.start();
-    }
-}
 
 void Filament_sensor::filRunout() {
 //    SERIAL_ECHOLNPGM("filRunout");
+    sendHostNotification_P(MSG_FILAMENT_RUNOUT_DETECTED);
     runoutEnabled = false;
     autoLoadEnabled = false;
     stop_and_save_print_to_ram(0, 0);
     restore_print_from_ram_and_continue(0);
     eeprom_increment_byte((uint8_t *)EEPROM_FERROR_COUNT);
     eeprom_increment_word((uint16_t *)EEPROM_FERROR_COUNT_TOT);
-    enquecommand_front_P((PSTR("M600")));
+    enquecommand_front_P(MSG_M600);
 }
 
 void Filament_sensor::triggerError() {
@@ -297,7 +290,7 @@ const char *IR_sensor_analog::getIRVersionText() {
 void IR_sensor_analog::setSensorRevision(SensorRevision rev, bool updateEEPROM) {
     sensorRevision = rev;
     if (updateEEPROM) {
-        eeprom_update_byte((uint8_t *)EEPROM_FSENSOR_PCB, (uint8_t)rev);
+        eeprom_update_byte_notify((uint8_t *)EEPROM_FSENSOR_PCB, (uint8_t)rev);
     }
 }
 
@@ -320,22 +313,7 @@ bool IR_sensor_analog::checkVoltage(uint16_t raw) {
             puts_P(PSTR("fsensor v0.4 in fault range 4.6-5V - unconnected"));
             return false;
         }
-        /// newer IR sensor cannot normally produce 0-0.3V, this is considered a failure
-#if 0 // Disabled as it has to be decided if we gonna use this or not.
-            if(IRsensor_Hopen_TRESHOLD <= raw && raw <= IRsensor_VMax_TRESHOLD) {
-                puts_P(PSTR("fsensor v0.4 in fault range 0.0-0.3V - wrong IR sensor"));
-                return false;
-            }
-#endif
     }
-    /// If IR sensor is "uknown state" and filament is not loaded > 1.5V return false
-#if 0
-#error "I really think this code can't be enabled anymore because we are constantly checking this voltage."
-        if((sensorRevision == SensorRevision::_Undef) && (raw > IRsensor_Lmax_TRESHOLD)) {
-            puts_P(PSTR("Unknown IR sensor version and no filament loaded detected."));
-            return false;
-        }
-#endif
     // otherwise the IR fsensor is considered working correctly
     return true;
 }
@@ -388,7 +366,7 @@ void PAT9125_sensor::init() {
 
     settings_init(); // also sets the state to State::initializing
 
-    calcChunkSteps(cs.axis_steps_per_unit[E_AXIS]); // for jam detection
+    calcChunkSteps(cs.axis_steps_per_mm[E_AXIS]); // for jam detection
 
     if (!pat9125_init()) {
         deinit();
@@ -455,7 +433,7 @@ void PAT9125_sensor::setJamDetectionEnabled(bool state, bool updateEEPROM) {
     resetStepCount();
     jamErrCnt = 0;
     if (updateEEPROM) {
-        eeprom_update_byte((uint8_t *)EEPROM_FSENSOR_JAM_DETECTION, state);
+        eeprom_update_byte_notify((uint8_t *)EEPROM_FSENSOR_JAM_DETECTION, state);
     }
 }
 
@@ -483,7 +461,7 @@ void PAT9125_sensor::filJam() {
     restore_print_from_ram_and_continue(0);
     eeprom_increment_byte((uint8_t *)EEPROM_FERROR_COUNT);
     eeprom_increment_word((uint16_t *)EEPROM_FERROR_COUNT_TOT);
-    enquecommand_front_P((PSTR("M600")));
+    enquecommand_front_P(MSG_M600);
 }
 
 bool PAT9125_sensor::updatePAT9125() {
@@ -509,7 +487,7 @@ bool PAT9125_sensor::updatePAT9125() {
         }
     }
 
-    if (!pollingTimer.running() || pollingTimer.expired(pollingPeriod)) {
+    if (pollingTimer.expired_cont(pollingPeriod)) {
         pollingTimer.start();
         if (!pat9125_update()) {
             init(); // try to reinit.

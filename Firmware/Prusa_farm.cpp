@@ -7,6 +7,9 @@
 #include "util.h"
 #include "ultralcd.h"
 #include "Filament_sensor.h"
+#include "language.h"
+#include "lcd.h"
+#include "stopwatch.h"
 
 #ifdef PRUSA_FARM
 uint8_t farm_mode = 0;
@@ -91,8 +94,8 @@ static void prusa_stat_printinfo() {
     SERIAL_ECHOPGM("][FNM:");
     SERIAL_ECHO(card.longFilename[0] ? card.longFilename : card.filename);
     SERIAL_ECHOPGM("][TIM:");
-    if (starttime != 0) {
-        SERIAL_ECHO(_millis() / 1000 - starttime / 1000);
+    if (print_job_timer.isRunning()) {
+        SERIAL_ECHO(print_job_timer.duration());
     }
     else {
         SERIAL_ECHO(0);
@@ -130,7 +133,7 @@ static void lcd_connect_printer() {
 
     int i = 0;
     int t = 0;
-    lcd_puts_at_P(0, 0, PSTR("Connect printer to")); 
+    lcd_puts_at_P(0, 0, PSTR("Connect printer to"));
     lcd_puts_at_P(0, 1, PSTR("monitoring or hold"));
     lcd_puts_at_P(0, 2, PSTR("the knob to continue"));
     while (no_response) {
@@ -143,7 +146,7 @@ static void lcd_connect_printer() {
             t = 0;
         }
         if (READ(BTN_ENC)) { //if button is not pressed
-            i = 0; 
+            i = 0;
             lcd_puts_at_P(0, 3, PSTR("                    "));
         }
         if (i != 0)
@@ -162,9 +165,7 @@ static void trace() {
 }
 
 void serial_read_stream() {
-
-    setAllTargetHotends(0);
-    setTargetBed(0);
+    disable_heater();
 
     lcd_clear();
     lcd_puts_P(PSTR(" Upload in progress"));
@@ -232,16 +233,16 @@ void prusa_statistics(uint8_t _message) {
     const uint8_t _fil_nr = 0;
     if (!farm_mode)
         return;
-    
+
     switch (_message) {
     case 0: // default message
         if (busy_state == PAUSED_FOR_USER) {
             prusa_statistics_case0(15);
         }
-        else if (isPrintPaused) {
+        else if (printingIsPaused()) {
             prusa_statistics_case0(14);
         }
-        else if (IS_SD_PRINTING || loading_flag) {
+        else if (IS_SD_PRINTING || (eFilamentAction != FilamentAction::None)) {
             prusa_statistics_case0(4);
         }
         else {
@@ -269,7 +270,7 @@ void prusa_statistics(uint8_t _message) {
         status_number = 3;
         farm_timer = 1;
 
-        if (IS_SD_PRINTING || loading_flag) {
+        if (IS_SD_PRINTING || (eFilamentAction != FilamentAction::None)) {
             SERIAL_ECHO('{');
             prusa_stat_printerstatus(4);
             prusa_stat_farm_number();
@@ -373,7 +374,7 @@ void prusa_statistics_update_from_status_screen() {
         switch (farm_timer) {
         case 8:
             prusa_statistics(21);
-            if(loading_flag)
+            if(eFilamentAction != FilamentAction::None)
                 prusa_statistics(22);
             break;
         case 5:
@@ -389,7 +390,7 @@ void prusa_statistics_update_from_lcd_update() {
 }
 
 void farm_mode_init() {
-    farm_mode = eeprom_init_default_byte((uint8_t*)EEPROM_FARM_MODE, 0); 
+    farm_mode = eeprom_init_default_byte((uint8_t*)EEPROM_FARM_MODE, 0);
     if (farm_mode) {
         no_response = true; //we need confirmation by recieving PRUSA thx
         prusa_statistics(8);
@@ -403,14 +404,14 @@ void farm_mode_init() {
         fsensor.setAutoLoadEnabled(false);
 #endif //FILAMENT_SENSOR
         // ~ FanCheck -> on
-        eeprom_update_byte((uint8_t*)EEPROM_FAN_CHECK_ENABLED, true);
+        eeprom_update_byte_notify((uint8_t*)EEPROM_FAN_CHECK_ENABLED, true);
     }
 }
 
 bool farm_prusa_code_seen() {
     if (!farm_mode)
         return false;
-    
+
     if (code_seen_P(PSTR("PRN"))) { // PRUSA PRN
         printf_P(_N("%u"), status_number);
     }
@@ -441,15 +442,15 @@ bool farm_prusa_code_seen() {
     else {
         return false;
     }
-    
+
     return true;
 }
 
 void farm_gcode_g98() {
     farm_mode = 1;
-    eeprom_update_byte((unsigned char *)EEPROM_FARM_MODE, farm_mode);
+    eeprom_update_byte_notify((unsigned char *)EEPROM_FARM_MODE, farm_mode);
     SilentModeMenu = SILENT_MODE_OFF;
-    eeprom_update_byte((unsigned char *)EEPROM_SILENT, SilentModeMenu);
+    eeprom_update_byte_notify((unsigned char *)EEPROM_SILENT, SilentModeMenu);
     fCheckModeInit(); // alternatively invoke printer reset
 }
 
@@ -461,7 +462,7 @@ void farm_gcode_g99() {
 
 void farm_disable() {
     farm_mode = false;
-    eeprom_update_byte((uint8_t*)EEPROM_FARM_MODE, farm_mode);
+    eeprom_update_byte_notify((uint8_t*)EEPROM_FARM_MODE, farm_mode);
 }
 
 #else //PRUSA_FARM

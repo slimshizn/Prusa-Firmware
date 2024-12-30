@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Marlin.h"
+#include <avr/pgmspace.h>
 
 #define BED_ZERO_REF_X (- 22.f + X_PROBE_OFFSET_FROM_EXTRUDER) // -22 + 23 = 1
 #define BED_ZERO_REF_Y (- 0.6f + Y_PROBE_OFFSET_FROM_EXTRUDER + 4.f) // -0.6 + 5 + 4 = 8.4
@@ -21,8 +21,8 @@
 
 #endif //not HEATBED_V2
 
-#define BED_X(i, n) ((float)i * (BED_Xn - BED_X0) / (n - 1) + BED_X0)
-#define BED_Y(i, n)  ((float)i * (BED_Yn - BED_Y0) / (n - 1) + BED_Y0)
+constexpr float x_mesh_density = (BED_Xn - BED_X0) / (MESH_NUM_X_POINTS - 1);
+constexpr float y_mesh_density = (BED_Yn - BED_Y0) / (MESH_NUM_Y_POINTS - 1);
 
 // Exact positions of the print head above the bed reference points, in the world coordinates.
 // The world coordinates match the machine coordinates only in case, when the machine
@@ -133,7 +133,7 @@ inline bool world2machine_clamp(float &x, float &y)
         tmpx = X_MAX_POS;
         clamped = true;
     }
-    
+
     if (tmpy < Y_MIN_POS) {
         tmpy = Y_MIN_POS;
         clamped = true;
@@ -145,6 +145,17 @@ inline bool world2machine_clamp(float &x, float &y)
         machine2world(tmpx, tmpy, x, y);
     return clamped;
 }
+
+/// @brief For a given column on the mesh calculate the bed X coordinate
+/// @param col column index on mesh
+/// @return Bed X coordinate
+float BED_X(const uint8_t col);
+
+/// @brief For a given row on the mesh calculate the bed Y coordinate
+/// @param row row index on mesh
+/// @return Bed Y coordinate
+float BED_Y(const uint8_t row);
+
 /**
  * @brief Bed skew and offest detection result
  *
@@ -152,13 +163,13 @@ inline bool world2machine_clamp(float &x, float &y)
  * Negative: failed
  */
 
-enum BedSkewOffsetDetectionResultType {
+enum BedSkewOffsetDetectionResultType : int8_t {
 	// Detection failed, some point was not found.
 	BED_SKEW_OFFSET_DETECTION_POINT_FOUND       =  0, //!< Point found
 	BED_SKEW_OFFSET_DETECTION_POINT_NOT_FOUND   = -1, //!< Point not found.
 	BED_SKEW_OFFSET_DETECTION_FITTING_FAILED    = -2, //!< Fitting failed
 	BED_SKEW_OFFSET_DETECTION_POINT_SCAN_FAILED = -3, //!< Point scan failed, try again
-	
+
 	// Detection finished with success.
 	BED_SKEW_OFFSET_DETECTION_PERFECT 			= 0,  //!< Perfect.
 	BED_SKEW_OFFSET_DETECTION_SKEW_MILD			= 1,  //!< Mildly skewed.
@@ -184,7 +195,7 @@ extern bool is_bed_z_jitter_data_valid();
 // Useful for visualizing the behavior of the bed induction detector.
 extern bool scan_bed_induction_points(int8_t verbosity_level);
 
-// Load Z babystep value from the EEPROM into babystepLoadZ, 
+// Load Z babystep value from the EEPROM into babystepLoadZ,
 // but don't apply it through the planner. This is useful on wake up
 // after power panic, when it is expected, that the baby step has been already applied.
 extern void babystep_load();
@@ -201,16 +212,7 @@ extern void babystep_reset();
 
 extern void count_xyz_details(float (&distanceMin)[2]);
 extern bool sample_z();
-/*
-typedef enum
-{
-	e_MBL_FAST, e_MBL_OPTIMAL, e_MBL_PREC
-} e_MBL_TYPE;
-*/
-//extern e_MBL_TYPE e_mbl_type;
-//extern void mbl_mode_set();
-//extern void mbl_mode_init();
-extern void mbl_settings_init();
 
-extern bool mbl_point_measurement_valid(uint8_t ix, uint8_t iy, uint8_t meas_points, bool zigzag);
-extern void mbl_interpolation(uint8_t meas_points);
+extern void mbl_settings_init();
+extern bool mbl_point_measurement_valid(uint8_t ix, uint8_t iy);
+extern void mbl_magnet_elimination();

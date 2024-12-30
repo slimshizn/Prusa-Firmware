@@ -248,7 +248,7 @@ const char* lang_get_name_by_code(uint16_t code)
 #endif // COMMUNITY_LANG_GROUP1_RO
 
 //Use the 3 lines below as a template and replace 'QR' and 'New language'
-//#ifdef COMMUNITY_LANG_GROUP1_QR 
+//#ifdef COMMUNITY_LANG_GROUP1_QR
 //	case LANG_CODE_QR: return _n("New language"); //community contribution
 //#endif // COMMUNITY_LANG_GROUP1_QR
 #endif // COMMUNITY_LANGUAGE_SUPPORT
@@ -276,7 +276,7 @@ const char* lang_get_sec_lang_str_by_id(uint16_t id)
 	return ui + pgm_read_word(((uint16_t*)(ui + 16 + id * 2))); //read relative offset and return calculated pointer
 }
 
-uint16_t lang_print_sec_lang(FILE* out)
+uint16_t lang_print_sec_lang()
 {
 	printf_P(_n("&_SEC_LANG        = 0x%04x\n"), &_SEC_LANG);
 	printf_P(_n("sizeof(_SEC_LANG) = 0x%04x\n"), sizeof(_SEC_LANG));
@@ -298,7 +298,7 @@ uint16_t lang_print_sec_lang(FILE* out)
 	puts_P(_n(" strings:\n"));
 	uint16_t ui = _SEC_LANG_TABLE; //table pointer
 	for (ui = 0; ui < _lt_count; ui++)
-		fprintf_P(out, _n("  %3d %S\n"), ui, lang_get_sec_lang_str_by_id(ui));
+		printf_P(_n("  %3d %S\n"), ui, lang_get_sec_lang_str_by_id(ui));
 	return _lt_count;
 }
 #endif //DEBUG_SEC_LANG

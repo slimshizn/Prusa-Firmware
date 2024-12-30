@@ -35,9 +35,9 @@ The workflow should be pretty straightforward for anyone with development experi
 Building with cmake requires:
 
 - cmake >= 3.22.5
-- ninja >= 1.10.2 (optional, but recommended)
+- ninja >= 1.12.1 (optional, but recommended)
 
-Python >= 3.6 is also required with the following modules:
+Python >= 3.8 is also required with the following modules:
 
 - pyelftools (package `python3-pyelftools`)
 - polib (package `python3-polib`)
@@ -147,7 +147,7 @@ After updating the kit, you may need to reload VScode.
 
 #### Building
 
-To start building a firmware, click the CMake Tools plugin icon on the far left side. You will get a very large list of targets to build. Find the firmware you'd like to build (like `MK3S-EINSy10a_ENGLISH`) and select the small icon which shows "Build" when hovered over.
+To start building a firmware, click the CMake Tools plugin icon on the far left side. You will get a very large list of targets to build. Find the firmware you'd like to build (like `MK3S_ENGLISH`) and select the small icon which shows "Build" when hovered over.
 
 The built .hex file can then be found in folder `Prusa-Firmware/build`
 

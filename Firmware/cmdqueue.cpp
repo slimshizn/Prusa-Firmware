@@ -1,8 +1,14 @@
+#include <stdarg.h>
 #include <util/atomic.h>
 #include "cmdqueue.h"
 #include "cardreader.h"
 #include "ultralcd.h"
 #include "Prusa_farm.h"
+#include "meatpack.h"
+#include "messages.h"
+#include "language.h"
+#include "stopwatch.h"
+#include "power_panic.h"
 
 // Reserve BUFSIZE lines of length MAX_CMD_SIZE plus CMDBUFFER_RESERVE_FRONT.
 char cmdbuffer[BUFSIZE * (MAX_CMD_SIZE + 1) + CMDBUFFER_RESERVE_FRONT];
@@ -102,7 +108,7 @@ void cmdqueue_reset()
 	//commands are removed from command queue after process_command() function is finished
 	//reseting command queue and enqueing new commands during some (usually long running) command processing would cause that new commands are immediately removed from queue (or damaged)
 	//this will ensure that all new commands which are enqueued after cmdqueue reset, will be always executed
-	cmdbuffer_front_already_processed = true; 
+	cmdbuffer_front_already_processed = true;
 }
 
 // How long a string could be pushed to the front of the command queue?
@@ -248,6 +254,22 @@ void cmdqueue_dump_to_serial()
 }
 #endif /* CMDBUFFER_DEBUG */
 
+static const char bufferFull[] PROGMEM = "\" failed: Buffer full!";
+static const char enqueingFront[] PROGMEM = "Enqueing to the front: \"";
+
+
+void enquecommandf_P(const char *fmt, ...)
+{
+    // MAX_CMD_SIZE is 96, but for formatting
+    // string we usually don't need more than 30 bytes
+    char cmd_buffer[30];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf_P(cmd_buffer, sizeof(cmd_buffer), fmt, ap);
+    va_end(ap);
+
+    enquecommand(cmd_buffer, false);
+}
 //adds an command to the main command buffer
 //thats really done in a non-safe way.
 //needs overworking someday
@@ -283,7 +305,7 @@ void enquecommand(const char *cmd, bool from_progmem)
             SERIAL_PROTOCOLRPGM(cmd);
         else
             SERIAL_ECHO(cmd);
-        SERIAL_ECHOLNPGM("\" failed: Buffer full!");
+        SERIAL_ECHOLNRPGM(bufferFull);
 #ifdef CMDBUFFER_DEBUG
         cmdqueue_dump_to_serial();
 #endif /* CMDBUFFER_DEBUG */
@@ -307,7 +329,7 @@ void enquecommand_front(const char *cmd, bool from_progmem)
             strcpy(cmdbuffer + bufindr + CMDHDRSIZE, cmd);
         ++ buflen;
         SERIAL_ECHO_START;
-        SERIAL_ECHOPGM("Enqueing to the front: \"");
+        SERIAL_ECHORPGM(enqueingFront);
         SERIAL_ECHO(cmdbuffer + bufindr + CMDHDRSIZE);
         SERIAL_ECHOLNPGM("\"");
 #ifdef CMDBUFFER_DEBUG
@@ -315,12 +337,12 @@ void enquecommand_front(const char *cmd, bool from_progmem)
 #endif /* CMDBUFFER_DEBUG */
     } else {
         SERIAL_ERROR_START;
-        SERIAL_ECHOPGM("Enqueing to the front: \"");
+        SERIAL_ECHORPGM(enqueingFront);
         if (from_progmem)
             SERIAL_PROTOCOLRPGM(cmd);
         else
             SERIAL_ECHO(cmd);
-        SERIAL_ECHOLNPGM("\" failed: Buffer full!");
+        SERIAL_ECHOLNRPGM(bufferFull);
 #ifdef CMDBUFFER_DEBUG
         cmdqueue_dump_to_serial();
 #endif /* CMDBUFFER_DEBUG */
@@ -332,7 +354,7 @@ void enquecommand_front(const char *cmd, bool from_progmem)
 void repeatcommand_front()
 {
     cmdbuffer_front_already_processed = true;
-} 
+}
 
 void get_command()
 {
@@ -346,9 +368,22 @@ void get_command()
 	}
 
   // start of serial line processing loop
-  while (((MYSERIAL.available() > 0 && !saved_printing) || (MYSERIAL.available() > 0 && isPrintPaused)) && !cmdqueue_serial_disabled) {  //is print is saved (crash detection or filament detection), dont process data from serial line
-	
+  while (((MYSERIAL.available() > 0 && !saved_printing) || (MYSERIAL.available() > 0 && printingIsPaused())) && !cmdqueue_serial_disabled) {  //is print is saved (crash detection or filament detection), dont process data from serial line
+
+#ifdef ENABLE_MEATPACK
+    // MeatPack Changes
+    // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+      const int rec = MYSERIAL.read();
+      if (rec < 0) continue;
+
+      mp_handle_rx_char((uint8_t)rec);
+      char c_res[2] = {0, 0};
+      const uint8_t char_count = mp_get_result_char(c_res);
+      // Note -- Paired bracket in preproc switch below
+      for (uint8_t i = 0; i < char_count; ++i) { char serial_char = c_res[i];
+#else
     char serial_char = MYSERIAL.read();
+#endif
 
     serialTimeoutTimer.start();
 
@@ -438,7 +473,7 @@ void get_command()
 
         // Handle KILL early, even when Stopped
         if(strcmp_P(cmd_start, PSTR("M112")) == 0)
-          kill(MSG_M112_KILL, 2);
+          kill(MSG_M112_KILL);
 
         // Bypass Stopped for some commands
         bool allow_when_stopped = false;
@@ -446,9 +481,11 @@ void get_command()
             allow_when_stopped = true;
 
         // Handle the USB timer
-        if ((*cmd_start == 'G') && !(IS_SD_PRINTING))
+        if ((*cmd_start == 'G') && (GetPrinterState() != PrinterState::IsSDPrinting)) {
             usb_timer.start();
-
+            SetPrinterState(PrinterState::IsHostPrinting); //set printer state busy printing to hide LCD menu while USB printing
+            eeprom_update_byte_notify((uint8_t*)EEPROM_UVLO, PowerPanic::NO_PENDING_RECOVERY);
+        }
         if (allow_when_stopped == false && Stopped == true) {
             // Stopped can be set either during error states (thermal error: cannot continue), or
             // when a printer-initiated action is processed. In such case the printer will send to
@@ -509,6 +546,9 @@ void get_command()
       if(serial_char == ';') comment_mode = true;
       if(!comment_mode) cmdbuffer[bufindw+CMDHDRSIZE+serial_count++] = serial_char;
     }
+    #ifdef ENABLE_MEATPACK
+     }
+    #endif
   } // end of serial line processing loop
 
     if (serial_count > 0 && serialTimeoutTimer.expired(farm_mode ? 800 : 2000)) {
@@ -545,7 +585,7 @@ void get_command()
     char serial_char = (char)n;
     if( serial_char == '\n'
      || serial_char == '\r'
-     || ((serial_char == '#' || serial_char == ':') )
+     || serial_char == '#'
      || serial_count >= (MAX_CMD_SIZE - 1)
      || n==-1
     ){
@@ -556,9 +596,9 @@ void get_command()
       {
         // This is either an empty line, or a line with just a comment.
         // Continue to the following line, and continue accumulating the number of bytes
-        // read from the sdcard into sd_count, 
+        // read from the sdcard into sd_count,
         // so that the length of the already read empty lines and comments will be added
-        // to the following non-empty line. 
+        // to the following non-empty line.
         return; // prevent cycling indefinitely - let manage_heaters do their job
       }
       // The new command buffer could be updated non-atomically, because it is not yet considered
@@ -595,7 +635,7 @@ void get_command()
 
       comment_mode = false; //for new command
       serial_count = 0; //clear buffer
-    
+
       if(card.eof()) break;
 
       // The following line will reserve buffer space if available.
@@ -621,18 +661,18 @@ void get_command()
           card.closefile();
 
           SERIAL_PROTOCOLLNRPGM(_n("Done printing file"));////MSG_FILE_PRINTED
-          stoptime=_millis();
           char time[30];
-          unsigned long t=(stoptime-starttime-pause_time)/1000;
-          pause_time = 0;
+          uint32_t t = print_job_timer.duration() / 60;
           int hours, minutes;
-          minutes=(t/60)%60;
-          hours=t/60/60;
-          save_statistics(total_filament_used, t);
+          minutes = t % 60;
+          hours = t / 60;
+          save_statistics();
           sprintf_P(time, PSTR("%i hours %i minutes"),hours, minutes);
           SERIAL_ECHO_START;
           SERIAL_ECHOLN(time);
+#ifndef SHOW_FILENAME_AFTER_FINISH
           lcd_setstatus(time);
+#endif //SHOW_FILENAME_AFTER_FINISH
           card.printingHasFinished();
           card.checkautostart(true);
 

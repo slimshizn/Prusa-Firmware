@@ -9,31 +9,16 @@ namespace SpoolJoin {
 SpoolJoin spooljoin;
 
 SpoolJoin::SpoolJoin()
-    : status(EEPROM::Unknown)
-    , currentMMUSlot(0)
+    : currentMMUSlot(0)
 {
-}
-
-void SpoolJoin::updateSpoolJoinStatus(EEPROM newStatus)
-{
-    status = newStatus;
-    eeprom_write_byte((uint8_t*)EEPROM_SPOOL_JOIN, (uint8_t)status);
 }
 
 void SpoolJoin::initSpoolJoinStatus()
 {
-    EEPROM currentStatus = (EEPROM)eeprom_read_byte((uint8_t*)EEPROM_SPOOL_JOIN);
-    if( currentStatus == EEPROM::Empty)
-    {
-        // By default SpoolJoin is disabled
-        updateSpoolJoinStatus(EEPROM::Disabled);
-    } else {
-        updateSpoolJoinStatus(currentStatus);
-    }
-
     // Useful information to see during bootup
     SERIAL_ECHOPGM("SpoolJoin is ");
-    if (isSpoolJoinEnabled())
+    uint8_t status = eeprom_init_default_byte((uint8_t*)EEPROM_SPOOL_JOIN, (uint8_t)EEPROM::Disabled);
+    if (status == (uint8_t)EEPROM::Enabled)
     {
         SERIAL_ECHOLNRPGM(_O(MSG_ON));
     } else {
@@ -45,9 +30,9 @@ void SpoolJoin::toggleSpoolJoin()
 {
     if (eeprom_read_byte((uint8_t*)EEPROM_SPOOL_JOIN) == (uint8_t)EEPROM::Disabled)
     {
-        eeprom_write_byte((uint8_t*)EEPROM_SPOOL_JOIN, (uint8_t)EEPROM::Enabled);
+        eeprom_update_byte_notify((uint8_t*)EEPROM_SPOOL_JOIN, (uint8_t)EEPROM::Enabled);
     } else {
-        eeprom_write_byte((uint8_t*)EEPROM_SPOOL_JOIN, (uint8_t)EEPROM::Disabled);
+        eeprom_update_byte_notify((uint8_t*)EEPROM_SPOOL_JOIN, (uint8_t)EEPROM::Disabled);
     }
 }
 
@@ -70,7 +55,7 @@ uint8_t SpoolJoin::nextSlot()
     SERIAL_ECHOPGM("SpoolJoin: ");
     SERIAL_ECHO((int)currentMMUSlot);
 
-    if (currentMMUSlot >= 4) currentMMUSlot = 0;
+    if (currentMMUSlot >= MMU_FILAMENT_COUNT-1) currentMMUSlot = 0;
     else currentMMUSlot++;
 
     SERIAL_ECHOPGM(" -> ");

@@ -19,7 +19,7 @@
 */
 
 #ifndef temperature_h
-#define temperature_h 
+#define temperature_h
 
 #include "Marlin.h"
 #include "config.h"
@@ -30,11 +30,9 @@ void temp_mgr_init(); //initialize the temperature handler
 void manage_heater(); //it is critical that this is called periodically.
 bool get_temp_error(); //return true if any thermal error is set
 
-extern bool checkAllHotends(void);
-
 // low level conversion routines
 // do not use these routines and variables outside of temperature.cpp
-extern int target_temperature[EXTRUDERS];  
+extern int target_temperature[EXTRUDERS];
 extern float current_temperature[EXTRUDERS];
 #ifdef SHOW_TEMP_ADC_VALUES
   extern int current_temperature_raw[EXTRUDERS];
@@ -61,10 +59,6 @@ extern int current_voltage_raw_pwr;
 #ifdef VOLT_BED_PIN
 extern int current_voltage_raw_bed;
 #endif
-
-#ifdef IR_SENSOR_ANALOG
-extern uint16_t current_voltage_raw_IR;
-#endif //IR_SENSOR_ANALOG
 
 extern bool bedPWMDisabled;
 
@@ -101,16 +95,16 @@ void resetPID(uint8_t extruder);
 //deg=degreeCelsius
 
 // Doesn't save FLASH when FORCE_INLINE removed.
-FORCE_INLINE float degHotend(uint8_t extruder) {  
+FORCE_INLINE float degHotend(uint8_t extruder) {
   return current_temperature[extruder];
 };
 
 #ifdef SHOW_TEMP_ADC_VALUES
-  FORCE_INLINE float rawHotendTemp(uint8_t extruder) {  
+  FORCE_INLINE float rawHotendTemp(uint8_t extruder) {
     return current_temperature_raw[extruder];
   };
 
-  FORCE_INLINE float rawBedTemp() {  
+  FORCE_INLINE float rawBedTemp() {
     return current_temperature_bed_raw;
   };
 #endif
@@ -120,39 +114,25 @@ FORCE_INLINE float degBed() {
 };
 
 // Doesn't save FLASH when FORCE_INLINE removed.
-FORCE_INLINE float degTargetHotend(uint8_t extruder) {  
+FORCE_INLINE float degTargetHotend(uint8_t extruder) {
   return target_temperature[extruder];
 };
 
-FORCE_INLINE float degTargetBed() {   
+FORCE_INLINE float degTargetBed() {
   return target_temperature_bed;
 };
 
 // Doesn't save FLASH when FORCE_INLINE removed.
-FORCE_INLINE void setTargetHotend(const float &celsius, uint8_t extruder) {  
-  target_temperature[extruder] = celsius;
-  resetPID(extruder);
+FORCE_INLINE void setTargetHotend(const float &celsius) {
+  target_temperature[0] = celsius;
+  resetPID(0);
 };
 
-// Doesn't save FLASH when not inlined.
-static inline void setTargetHotendSafe(const float &celsius, uint8_t extruder)
-{
-    if (extruder<EXTRUDERS) {
-        setTargetHotend(celsius, extruder);
-    }
-}
-
-// Doesn't save FLASH when not inlined.
-static inline void setAllTargetHotends(const float &celsius)
-{
-    for(uint8_t i = 0; i < EXTRUDERS; i++) setTargetHotend(celsius, i);
-}
-
-FORCE_INLINE void setTargetBed(const float &celsius) {  
+FORCE_INLINE void setTargetBed(const float &celsius) {
   target_temperature_bed = celsius;
 };
 
-FORCE_INLINE bool isHeatingHotend(uint8_t extruder){  
+FORCE_INLINE bool isHeatingHotend(uint8_t extruder){
   return target_temperature[extruder] > current_temperature[extruder];
 };
 
@@ -160,7 +140,7 @@ FORCE_INLINE bool isHeatingBed() {
   return target_temperature_bed > current_temperature_bed;
 };
 
-FORCE_INLINE bool isCoolingHotend(uint8_t extruder) {  
+FORCE_INLINE bool isCoolingHotend(uint8_t extruder) {
   return target_temperature[extruder] < current_temperature[extruder];
 };
 
@@ -170,33 +150,11 @@ FORCE_INLINE bool isCoolingBed() {
 
 #define degHotend0() degHotend(0)
 #define degTargetHotend0() degTargetHotend(0)
-#define setTargetHotend0(_celsius) setTargetHotend((_celsius), 0)
 #define isHeatingHotend0() isHeatingHotend(0)
 #define isCoolingHotend0() isCoolingHotend(0)
-#if EXTRUDERS > 1
-#define degHotend1() degHotend(1)
-#define degTargetHotend1() degTargetHotend(1)
-#define setTargetHotend1(_celsius) setTargetHotend((_celsius), 1)
-#define isHeatingHotend1() isHeatingHotend(1)
-#define isCoolingHotend1() isCoolingHotend(1)
-#else
-#define setTargetHotend1(_celsius) do{}while(0)
-#endif
-#if EXTRUDERS > 2
-#define degHotend2() degHotend(2)
-#define degTargetHotend2() degTargetHotend(2)
-#define setTargetHotend2(_celsius) setTargetHotend((_celsius), 2)
-#define isHeatingHotend2() isHeatingHotend(2)
-#define isCoolingHotend2() isCoolingHotend(2)
-#else
-#define setTargetHotend2(_celsius) do{}while(0)
-#endif
-#if EXTRUDERS > 3
-#error Invalid number of extruders
-#endif
 
 // return "false", if all heaters are 'off' (ie. "true", if any heater is 'on')
-#define CHECK_ALL_HEATERS (checkAllHotends()||(target_temperature_bed!=0))
+#define CHECK_ALL_HEATERS ((target_temperature[0] != 0) || (target_temperature_bed != 0))
 
 int getHeaterPower(int heater);
 void disable_heater(); // Disable all heaters *instantaneously*
@@ -209,30 +167,31 @@ FORCE_INLINE void autotempShutdown(){
  {
   autotemp_enabled=false;
   if(degTargetHotend(active_extruder)>autotemp_min)
-    setTargetHotend(0,active_extruder);
+    setTargetHotend(0);
  }
  #endif
 }
 
 void PID_autotune(float temp, int extruder, int ncycles);
 
-#ifdef TEMP_MODEL
-bool temp_model_enabled(); // return temperature model state
-void temp_model_set_enabled(bool enabled);
-void temp_model_set_warn_beep(bool enabled);
-void temp_model_set_params(float C = NAN, float P = NAN, float Ta_corr = NAN, float warn = NAN, float err = NAN);
-void temp_model_set_resistance(uint8_t index, float R);
+#ifdef THERMAL_MODEL
+bool thermal_model_enabled(); // return thermal model state
+void thermal_model_set_enabled(bool enabled);
+void thermal_model_set_warn_beep(bool enabled);
+void thermal_model_set_params(float P=NAN, float U=NAN, float V=NAN, float C=NAN, float D=NAN,
+    int16_t L=-1, float Ta_corr=NAN, float warn=NAN, float err=NAN);
+void thermal_model_set_resistance(uint8_t index, float R);
 
-void temp_model_report_settings();
-void temp_model_reset_settings();
-void temp_model_load_settings();
-void temp_model_save_settings();
+void thermal_model_report_settings();
+void thermal_model_reset_settings();
+void thermal_model_load_settings();
+void thermal_model_save_settings();
 
-void temp_model_autotune(int16_t temp = 0, bool selftest = false);
-bool temp_model_autotune_result(); // return true if the last autotune was complete and successful
+void thermal_model_autotune(int16_t temp = 0, bool selftest = false);
+bool thermal_model_autotune_result(); // return true if the last autotune was complete and successful
 
-#ifdef TEMP_MODEL_DEBUG
-void temp_model_log_enable(bool enable);
+#ifdef THERMAL_MODEL_DEBUG
+void thermal_model_log_enable(bool enable);
 #endif
 #endif
 

@@ -13,7 +13,7 @@
 #define OPTIBOOT_MAJVER 6
 #define OPTIBOOT_CUSTOMVER 0
 #define OPTIBOOT_MINVER 2
-static unsigned const int __attribute__((section(".version"))) 
+static unsigned const int __attribute__((section(".version")))
   optiboot_version = 256*(OPTIBOOT_MAJVER + OPTIBOOT_CUSTOMVER) + OPTIBOOT_MINVER;
 
 #if 0
@@ -160,6 +160,8 @@ uint8_t optiboot_xflash_enter()
 
   lcd_clear();
   lcd_puts_at_P(0, 1, PSTR(" Upgrading xflash\n Do not disconnect!"));
+
+  boot_app_magic = 0; //disable the bootapp if a watchdog reset is going to be used
 
   /* Forever loop: exits by causing WDT reset */
   for (;;) {

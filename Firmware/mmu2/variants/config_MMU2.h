@@ -34,10 +34,16 @@ static constexpr float MMU2_LOAD_TO_NOZZLE_FEED_RATE = 20.0F; // mm/s
 static constexpr float MMU2_UNLOAD_TO_FINDA_FEED_RATE = 120.0F; // mm/s
 
 static constexpr float MMU2_VERIFY_LOAD_TO_NOZZLE_FEED_RATE = 50.0F; // mm/s
+static constexpr float MMU2_VERIFY_LOAD_TO_NOZZLE_TWEAK = -5.F; // mm used to shorten/lenghten (negative number -> shorten) the distange of verify load to nozzle
 
 // The first the MMU does is initialise its axis. Meanwhile the E-motor will unload 20mm of filament in approx. 1 second.
 static constexpr float MMU2_RETRY_UNLOAD_TO_FINDA_LENGTH = 80.0f; // mm
 static constexpr float MMU2_RETRY_UNLOAD_TO_FINDA_FEED_RATE = 80.0f; // mm/s
+
+// After loading a new filament, the printer will extrude the filament by this distance
+// and then retract it back to the original position. This is used to check if the
+// filament sensor reading flickers or filament is jammed.
+static constexpr float MMU2_CHECK_FILAMENT_PRESENCE_EXTRUSION_LENGTH = MMU2_EXTRUDER_PTFE_LENGTH + MMU2_EXTRUDER_HEATBREAK_LENGTH + MMU2_VERIFY_LOAD_TO_NOZZLE_TWEAK + MMU2_FILAMENT_SENSOR_POSITION;
 
 static constexpr uint8_t MMU2_NO_TOOL = 99;
 static constexpr uint32_t MMU_BAUD = 115200;
